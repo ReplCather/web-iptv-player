@@ -1,0 +1,25 @@
+
+> web-tv@0.0.0 build /home/gm3w8frgehg1/web-iptv-player
+> vite build
+
+vite v4.5.14 building for production...
+transforming...
+✓ 16 modules transformed.
+✓ built in 616ms
+[vite]: Rollup failed to resolve import "@supabase/supabase-js" from "/home/gm3w8frgehg1/web-iptv-player/src/components/AnalyticsDashboard.vue".
+This is most likely unintended because it can break your application at runtime.
+If you do want to externalize this module explicitly add it to
+`build.rollupOptions.external`
+error during build:
+Error: [vite]: Rollup failed to resolve import "@supabase/supabase-js" from "/home/gm3w8frgehg1/web-iptv-player/src/components/AnalyticsDashboard.vue".
+This is most likely unintended because it can break your application at runtime.
+If you do want to externalize this module explicitly add it to
+`build.rollupOptions.external`
+    at viteWarn (file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/vite@4.5.14_@types+node@22.19.11_less@4.5.1_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-827b23df.js:48272:27)
+    at onRollupWarning (file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/vite@4.5.14_@types+node@22.19.11_less@4.5.1_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-827b23df.js:48304:9)
+    at onwarn (file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/vite@4.5.14_@types+node@22.19.11_less@4.5.1_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-827b23df.js:48032:13)
+    at file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/rollup@3.30.0/node_modules/rollup/dist/es/shared/node-entry.js:24305:13
+    at Object.logger [as onLog] (file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/rollup@3.30.0/node_modules/rollup/dist/es/shared/node-entry.js:25979:9)
+    at ModuleLoader.handleInvalidResolvedId (file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/rollup@3.30.0/node_modules/rollup/dist/es/shared/node-entry.js:24891:26)
+    at file:///home/gm3w8frgehg1/web-iptv-player/node_modules/.pnpm/rollup@3.30.0/node_modules/rollup/dist/es/shared/node-entry.js:24851:26
+ ELIFECYCLE  Command failed with exit code 1.

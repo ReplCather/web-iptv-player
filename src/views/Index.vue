@@ -62,10 +62,23 @@ onMounted(async () => {
         en: en,
         fr: fr,
       },
+      html5: {
+        hls: {
+          overrideNative: true,
+          enableLowInitialPlaylist: true,
+          smoothQualityChange: true,
+        },
+      },
     });
 
     videojs.registerPlugin("translatePlugin", translatePlugin);
     player.translatePlugin();
+
+    // Handle video errors
+    player.on("error", () => {
+      const errorCode = player.error()?.code;
+      console.error("[v0] Video error code:", errorCode);
+    });
 
     // Set initial source if available
     if (props.value) {
@@ -82,6 +95,7 @@ onMounted(async () => {
     // Watch for source changes
     watch(() => props.value, (newValue) => {
       if (newValue && player) {
+        console.log("[v0] Loading stream:", newValue);
         player.src({ src: newValue, type: "application/x-mpegURL" });
       }
     });
@@ -109,7 +123,7 @@ onMounted(async () => {
       }
     });
   } catch (error) {
-    console.error("Failed to initialize video player:", error);
+    console.error("[v0] Failed to initialize video player:", error);
   }
 });
 

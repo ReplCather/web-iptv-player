@@ -33,6 +33,7 @@ import fr from "video.js/dist/lang/fr.json";
 import { computed, onMounted, ref, watch, nextTick, onBeforeUnmount } from "vue";
 import { translatePlugin, refreshTranslateBtn } from "../utils/videojsPlugins";
 import { useI18n } from "../i18n/index.js";
+import { getSmartStreamUrl, markAsCorsBlocked } from "../services/proxyService.js";
 import videojs from "video.js";
 
 const MAX_RETRIES = 3;
@@ -44,8 +45,11 @@ const videoElement = ref(null);
 const errorMessage = ref("");
 const canRetry = ref(false);
 const retryCount = ref(0);
+const useProxy = ref(false);
+const currentStreamMode = ref("direct");
 let player = null;
 let retryTimeout = null;
+let originalUrl = null;
 
 const retryText = computed(() => {
   return locale.value === "fr" ? "Réessayer" : "Retry";
@@ -86,10 +90,17 @@ function getErrorMessage(errorCode) {
   return messages[errorCode] || (locale.value === "fr" ? "Erreur de lecture" : "Playback error");
 }
 
-function loadSource(src) {
+async function loadSource(src, forceProxy = false) {
   if (!player || !src) return;
   
   clearError();
+  originalUrl = src;
+  
+  // Get smart URL (direct or via proxy)
+  const streamInfo = await getSmartStreamUrl(src, forceProxy);
+  const streamUrl = streamInfo.url;
+  currentStreamMode.value = streamInfo.mode;
+  useProxy.value = streamInfo.mode === "proxy";
   
   // Detect source type
   let type = "application/x-mpegURL";
@@ -101,7 +112,7 @@ function loadSource(src) {
     type = "video/mp2t";
   }
   
-  player.src({ src, type });
+  player.src({ src: streamUrl, type });
 }
 
 function retryStream() {
@@ -113,8 +124,12 @@ function retryStream() {
   retryCount.value++;
   clearError();
   
-  if (props.value && player) {
-    loadSource(props.value);
+  // If direct mode failed, try with proxy
+  if (!useProxy.value && originalUrl) {
+    markAsCorsBlocked(originalUrl);
+    loadSource(originalUrl, true);
+  } else if (originalUrl && player) {
+    loadSource(originalUrl, useProxy.value);
   }
 }
 
@@ -156,7 +171,7 @@ onMounted(async () => {
 
     player.translatePlugin();
 
-    // Handle video errors with retry logic
+    // Handle video errors with retry logic and proxy fallback
     player.on("error", () => {
       const error = player.error();
       if (!error) return;
@@ -164,18 +179,26 @@ onMounted(async () => {
       const errorCode = error.code;
       const message = getErrorMessage(errorCode);
       
-      // Auto-retry on network errors (code 2)
-      if (errorCode === 2 && retryCount.value < MAX_RETRIES) {
+      // On network error (CORS likely), try proxy if not already using it
+      if (errorCode === 2 && !useProxy.value && originalUrl) {
+        markAsCorsBlocked(originalUrl);
+        showError(`${message} - ${locale.value === "fr" ? "Passage au proxy" : "Switching to proxy"}...`, false);
+        
+        retryTimeout = setTimeout(() => {
+          loadSource(originalUrl, true);
+        }, RETRY_DELAY);
+      } else if (errorCode === 2 && retryCount.value < MAX_RETRIES) {
+        // Already using proxy, do normal retry
         retryCount.value++;
         showError(`${message} - ${locale.value === "fr" ? "Nouvelle tentative" : "Retrying"}...`, false);
         
         retryTimeout = setTimeout(() => {
-          if (props.value && player) {
-            loadSource(props.value);
+          if (originalUrl && player) {
+            loadSource(originalUrl, useProxy.value);
           }
         }, RETRY_DELAY);
       } else {
-        showError(message, errorCode !== 4); // Don't allow retry for unsupported sources
+        showError(message, errorCode !== 4);
       }
     });
 

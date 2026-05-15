@@ -7,11 +7,9 @@ import VideoPlayer from '@videojs-player/vue'
 import 'video.js/dist/video-js.css'
 import { createI18n } from './i18n/index.js'
 
-// Load HLS plugin dynamically
+// Load HLS plugin dynamically (silently fail if not available)
 if (typeof window !== 'undefined') {
-  import('videojs-contrib-hls').catch(() => {
-    console.warn('[v0] HLS plugin failed to load');
-  });
+  import('videojs-contrib-hls').catch(() => {});
 }
 
 const app = createApp(App)

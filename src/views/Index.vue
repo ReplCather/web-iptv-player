@@ -15,6 +15,15 @@
         </a>
       </p>
     </video>
+    <div v-if="errorMessage" class="error-overlay">
+      <div class="error-content">
+        <span class="error-icon">!</span>
+        <p>{{ errorMessage }}</p>
+        <button v-if="canRetry" @click="retryStream" class="retry-btn">
+          {{ retryText }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -26,10 +35,21 @@ import { translatePlugin, refreshTranslateBtn } from "../utils/videojsPlugins";
 import { useI18n } from "../i18n/index.js";
 import videojs from "video.js";
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000;
+
 const { t, locale } = useI18n();
 const props = defineProps(["value", "track"]);
 const videoElement = ref(null);
+const errorMessage = ref("");
+const canRetry = ref(false);
+const retryCount = ref(0);
 let player = null;
+let retryTimeout = null;
+
+const retryText = computed(() => {
+  return locale.value === "fr" ? "Réessayer" : "Retry";
+});
 
 const tracks = computed(() => {
   return (
@@ -45,12 +65,74 @@ const tracks = computed(() => {
   );
 });
 
+function clearError() {
+  errorMessage.value = "";
+  canRetry.value = false;
+}
+
+function showError(message, allowRetry = true) {
+  errorMessage.value = message;
+  canRetry.value = allowRetry && retryCount.value < MAX_RETRIES;
+}
+
+function getErrorMessage(errorCode) {
+  const messages = {
+    1: locale.value === "fr" ? "Chargement interrompu" : "Loading aborted",
+    2: locale.value === "fr" ? "Erreur réseau" : "Network error",
+    3: locale.value === "fr" ? "Erreur de décodage" : "Decode error",
+    4: locale.value === "fr" ? "Source non supportée" : "Source not supported",
+    5: locale.value === "fr" ? "Source chiffrée" : "Encrypted source",
+  };
+  return messages[errorCode] || (locale.value === "fr" ? "Erreur de lecture" : "Playback error");
+}
+
+function loadSource(src) {
+  if (!player || !src) return;
+  
+  clearError();
+  
+  // Detect source type
+  let type = "application/x-mpegURL";
+  if (src.includes(".mp4")) {
+    type = "video/mp4";
+  } else if (src.includes(".webm")) {
+    type = "video/webm";
+  } else if (src.includes(".ts")) {
+    type = "video/mp2t";
+  }
+  
+  player.src({ src, type });
+}
+
+function retryStream() {
+  if (retryCount.value >= MAX_RETRIES) {
+    showError(locale.value === "fr" ? "Nombre max de tentatives atteint" : "Max retries reached", false);
+    return;
+  }
+  
+  retryCount.value++;
+  clearError();
+  
+  if (props.value && player) {
+    loadSource(props.value);
+  }
+}
+
+function registerPluginSafe() {
+  // Only register if not already registered
+  if (!videojs.getPlugin("translatePlugin")) {
+    videojs.registerPlugin("translatePlugin", translatePlugin);
+  }
+}
+
 onMounted(async () => {
   await nextTick();
   
   if (!videoElement.value) return;
   
   try {
+    registerPluginSafe();
+    
     player = videojs(videoElement.value, {
       controls: true,
       autoplay: false,
@@ -63,26 +145,49 @@ onMounted(async () => {
         fr: fr,
       },
       html5: {
-        hls: {
+        vhs: {
           overrideNative: true,
           enableLowInitialPlaylist: true,
           smoothQualityChange: true,
         },
       },
+      liveui: true,
     });
 
-    videojs.registerPlugin("translatePlugin", translatePlugin);
     player.translatePlugin();
 
-    // Handle video errors
+    // Handle video errors with retry logic
     player.on("error", () => {
-      const errorCode = player.error()?.code;
-      console.error("[v0] Video error code:", errorCode);
+      const error = player.error();
+      if (!error) return;
+      
+      const errorCode = error.code;
+      const message = getErrorMessage(errorCode);
+      
+      // Auto-retry on network errors (code 2)
+      if (errorCode === 2 && retryCount.value < MAX_RETRIES) {
+        retryCount.value++;
+        showError(`${message} - ${locale.value === "fr" ? "Nouvelle tentative" : "Retrying"}...`, false);
+        
+        retryTimeout = setTimeout(() => {
+          if (props.value && player) {
+            loadSource(props.value);
+          }
+        }, RETRY_DELAY);
+      } else {
+        showError(message, errorCode !== 4); // Don't allow retry for unsupported sources
+      }
+    });
+
+    // Clear error on successful play
+    player.on("playing", () => {
+      clearError();
+      retryCount.value = 0;
     });
 
     // Set initial source if available
     if (props.value) {
-      player.src({ src: props.value, type: "application/x-mpegURL" });
+      loadSource(props.value);
     }
 
     // Add tracks if available
@@ -95,8 +200,8 @@ onMounted(async () => {
     // Watch for source changes
     watch(() => props.value, (newValue) => {
       if (newValue && player) {
-        console.log("[v0] Loading stream:", newValue);
-        player.src({ src: newValue, type: "application/x-mpegURL" });
+        retryCount.value = 0;
+        loadSource(newValue);
       }
     });
 
@@ -110,12 +215,10 @@ onMounted(async () => {
     // Watch for track changes
     watch(tracks, (newTracks) => {
       if (player && newTracks) {
-        // Remove existing tracks
         const textTracks = player.textTracks();
         for (let i = textTracks.length - 1; i >= 0; i--) {
           player.removeRemoteTextTrack(textTracks[i]);
         }
-        // Add new tracks
         newTracks.forEach(track => {
           player.addRemoteTextTrack(track, true);
         });
@@ -123,12 +226,15 @@ onMounted(async () => {
       }
     });
   } catch (error) {
-    console.error("[v0] Failed to initialize video player:", error);
+    showError(locale.value === "fr" ? "Erreur d'initialisation du lecteur" : "Player initialization error", false);
   }
 });
 
 // Cleanup on unmount
 onBeforeUnmount(() => {
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+  }
   if (player) {
     player.dispose();
     player = null;
@@ -140,5 +246,58 @@ onBeforeUnmount(() => {
 .video-container {
   width: 100%;
   height: 100%;
+  position: relative;
+}
+
+.error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.error-content {
+  text-align: center;
+  color: #fff;
+  padding: 2rem;
+}
+
+.error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #ef4444;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.error-content p {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+}
+
+.retry-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #2563eb;
 }
 </style>

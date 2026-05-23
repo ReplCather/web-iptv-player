@@ -7,10 +7,8 @@ import VideoPlayer from '@videojs-player/vue'
 import 'video.js/dist/video-js.css'
 import { createI18n } from './i18n/index.js'
 
-// Load HLS plugin dynamically (silently fail if not available)
-if (typeof window !== 'undefined') {
-  import('videojs-contrib-hls').catch(() => {});
-}
+// Video.js 8+ has built-in HLS support via VHS (Video.js HTTP Streaming)
+// No need for videojs-contrib-hls which is deprecated
 
 const app = createApp(App)
 const i18n = createI18n()

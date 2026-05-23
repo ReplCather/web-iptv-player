@@ -7,7 +7,6 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
-      external: ['videojs-contrib-hls'],
       output: {
         manualChunks(id) {
           if (id.includes('video.js') || id.includes('videojs')) {
